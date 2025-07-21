@@ -8,50 +8,70 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Game Theme Colors */
+    --background: 270 20% 98%;
+    --foreground: 270 15% 9%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 270 15% 9%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 270 15% 9%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 268 83% 58%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 268 83% 68%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 270 20% 95%;
+    --secondary-foreground: 270 15% 9%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 270 20% 95%;
+    --muted-foreground: 270 8% 45%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 178 64% 52%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --success: 142 69% 58%;
+    --success-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --warning: 48 96% 89%;
+    --warning-foreground: 25 95% 53%;
 
-    --radius: 0.5rem;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 270 20% 91%;
+    --input: 270 20% 91%;
+    --ring: 268 83% 58%;
+
+    --radius: 0.75rem;
+
+    /* Game Specific Colors */
+    --game-winner: 142 69% 58%;
+    --game-second: 45 93% 47%;
+    --game-third: 17 88% 40%;
+    --game-neutral: 240 4% 46%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
+    --gradient-game: linear-gradient(135deg, hsl(268 83% 58%), hsl(178 64% 52%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(270 20% 98%));
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    /* Shadows */
+    --shadow-game: 0 10px 30px -10px hsl(var(--primary) / 0.3);
+    --shadow-card: 0 4px 20px -4px hsl(270 20% 70% / 0.3);
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
@@ -101,5 +121,117 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+}
+
+@layer components {
+  /* Game Specific Animations */
+  .spinner-wheel {
+    animation: spin-wheel 3s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+  }
+
+  .letter-bounce {
+    animation: letter-bounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+
+  .winner-glow {
+    animation: winner-glow 2s ease-in-out infinite alternate;
+  }
+
+  .game-card {
+    background: var(--gradient-card);
+    box-shadow: var(--shadow-card);
+    transition: var(--transition-smooth);
+  }
+
+  .game-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-game);
+  }
+
+  .btn-game {
+    background: var(--gradient-primary);
+    transition: var(--transition-bounce);
+    box-shadow: var(--shadow-card);
+  }
+
+  .btn-game:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-game);
+  }
+
+  .btn-game:active {
+    transform: translateY(0);
+  }
+
+  .chat-message {
+    animation: slide-up 0.3s ease-out;
+  }
+
+  .score-animation {
+    animation: score-popup 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+}
+
+@keyframes spin-wheel {
+  0% {
+    transform: rotate(0deg);
+  }
+  70% {
+    transform: rotate(1440deg);
+  }
+  100% {
+    transform: rotate(1440deg);
+  }
+}
+
+@keyframes letter-bounce {
+  0% {
+    transform: scale(0.3) rotate(-5deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes winner-glow {
+  0% {
+    box-shadow: 0 0 20px hsl(var(--game-winner) / 0.5);
+  }
+  100% {
+    box-shadow: 0 0 40px hsl(var(--game-winner) / 0.8);
+  }
+}
+
+@keyframes slide-up {
+  0% {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes score-popup {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
