@@ -1,4 +1,4 @@
-const express = require('express');
+import express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
