@@ -1,73 +1,159 @@
-# Welcome to your Lovable project
+# PulseStop - Jogo de Adedonha Online
 
-## Project info
+Um jogo multiplayer de Stop/Adedonha em tempo real usando Node.js, Socket.IO e React.
 
-**URL**: https://lovable.dev/projects/a44e6182-e8e6-4c39-815e-af06cdcdab20
+## 🎮 Funcionalidades
 
-## How can I edit this code?
+- **Multiplayer em tempo real** com Socket.IO
+- **Salas privadas** com códigos únicos
+- **Chat em tempo real** entre jogadores
+- **Sistema de pontuação** inteligente
+- **Configurações personalizáveis** (rodadas, tempo, categorias)
+- **Interface responsiva** e moderna
+- **Deploy pronto** para Render.com
 
-There are several ways of editing your application.
+## 🚀 Deploy no Render.com
 
-**Use Lovable**
+### Pré-requisitos
+1. Conta no [Render.com](https://render.com)
+2. Repositório Git com o código
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/a44e6182-e8e6-4c39-815e-af06cdcdab20) and start prompting.
+### Passos para deploy
 
-Changes made via Lovable will be committed automatically to this repo.
+1. **Conecte seu repositório** no Render
+2. **Configure o serviço Web** com:
+   - **Environment**: Node
+   - **Build Command**: `npm run build`
+   - **Start Command**: `npm start`
+   - **Auto-Deploy**: Yes
 
-**Use your preferred IDE**
+3. **Variáveis de ambiente** (opcional):
+   ```
+   NODE_ENV=production
+   PORT=3001
+   ```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+4. **Deploy automático** será executado
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Estrutura do projeto para deploy
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+pulsestop/
+├── server.cjs              # Servidor Node.js/Socket.IO
+├── package-server.json     # Dependências do servidor
+├── package-main.json       # Package.json para deploy
+├── render.yaml            # Configuração do Render
+├── dist/                  # Build do frontend (gerado)
+└── src/                   # Código fonte React
 ```
 
-**Edit a file directly in GitHub**
+## 🛠️ Desenvolvimento Local
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Pré-requisitos
+- Node.js 18+
+- npm 8+
 
-**Use GitHub Codespaces**
+### Instalação
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+1. **Clone o repositório**
+   ```bash
+   git clone <seu-repositorio>
+   cd pulsestop
+   ```
 
-## What technologies are used for this project?
+2. **Instale dependências do frontend**
+   ```bash
+   npm install
+   ```
 
-This project is built with:
+3. **Instale dependências do servidor**
+   ```bash
+   cp package-server.json temp-package.json
+   npm install --prefix ./server express socket.io cors
+   ```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Executar em desenvolvimento
 
-## How can I deploy this project?
+1. **Frontend** (porta 5173):
+   ```bash
+   npm run dev
+   ```
 
-Simply open [Lovable](https://lovable.dev/projects/a44e6182-e8e6-4c39-815e-af06cdcdab20) and click on Share -> Publish.
+2. **Backend** (porta 3001):
+   ```bash
+   npm run dev:server
+   ```
 
-## Can I connect a custom domain to my Lovable project?
+3. **Ambos simultaneamente**:
+   ```bash
+   npm run dev:full
+   ```
 
-Yes, you can!
+## 🎯 Como jogar
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+1. **Acesse o site** deployado no Render
+2. **Digite seu nome** na tela inicial
+3. **Crie uma sala** ou **entre em uma sala** existente
+4. **Configure o jogo** (host apenas):
+   - Número de rodadas (1-10)
+   - Tempo por rodada (30-180s)
+   - Categorias ativas
+   - Incluir/excluir letras difíceis
+5. **Inicie o jogo** e divirta-se!
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+### Regras de pontuação
+- **10 pontos**: Resposta única (só você respondeu)
+- **5 pontos**: Resposta repetida (outros também responderam)
+- **0 pontos**: Resposta inválida ou que não começa com a letra
+
+## 🔧 Tecnologias
+
+### Backend
+- **Node.js** - Runtime JavaScript
+- **Express** - Framework web
+- **Socket.IO** - Comunicação em tempo real
+- **CORS** - Controle de acesso
+
+### Frontend
+- **React 18** - Interface de usuário
+- **TypeScript** - Tipagem estática
+- **Vite** - Build tool moderna
+- **Tailwind CSS** - Estilização
+- **Socket.IO Client** - Conexão com servidor
+- **Radix UI** - Componentes acessíveis
+
+## 📝 Configuração do Render.com
+
+O projeto está configurado para deploy automático no Render.com:
+
+1. **Build automático** do frontend com Vite
+2. **Servidor Node.js** servindo arquivos estáticos e API
+3. **Socket.IO** para comunicação em tempo real
+4. **Limpeza automática** de salas inativas
+5. **Variáveis de ambiente** para produção
+
+### Arquivos importantes para deploy
+- `server.cjs` - Servidor principal
+- `package-server.json` - Dependências de produção
+- `render.yaml` - Configuração do Render
+- `package-main.json` - Package.json para build
+
+## 🤝 Contribuindo
+
+1. Fork o projeto
+2. Crie uma branch (`git checkout -b feature/nova-funcionalidade`)
+3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
+4. Push para a branch (`git push origin feature/nova-funcionalidade`)
+5. Abra um Pull Request
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
+
+## 🎉 Créditos
+
+Desenvolvido pela equipe PulseStop com muito ❤️ e ☕
+
+---
+
+**Divirta-se jogando PulseStop! 🎮**

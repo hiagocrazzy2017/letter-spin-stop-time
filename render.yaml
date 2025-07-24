@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: pulsestop
+    env: node
+    repo: https://github.com/youruser/pulsestop
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        fromService:
+          type: web
+          name: pulsestop
+          property: port
+    healthCheckPath: /

@@ -1,7 +1,7 @@
 {
-  "name": "stop-adedonha-server",
+  "name": "pulsestop-server",
   "version": "1.0.0",
-  "description": "Servidor Node.js para jogo Stop/Adedonha multiplayer online",
+  "description": "Servidor Node.js para jogo PulseStop/Adedonha multiplayer online",
   "main": "server.cjs",
   "scripts": {
     "start": "node server.cjs",
@@ -10,6 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
+    "pulsestop",
     "stop",
     "adedonha",
     "multiplayer",
@@ -17,7 +18,7 @@
     "socket.io",
     "nodejs"
   ],
-  "author": "Lovable AI",
+  "author": "PulseStop Team",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",

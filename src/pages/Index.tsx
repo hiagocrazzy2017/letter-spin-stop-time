@@ -291,7 +291,7 @@ const Index = () => {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              STOP
+              PulseStop
             </h1>
             <p className="text-xl text-muted-foreground">Jogo de Adedonha Online Multiplayer</p>
           </div>
@@ -408,7 +408,7 @@ const Index = () => {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              STOP
+              PulseStop
             </h1>
             <Badge variant="secondary" className="text-sm">
               Rodada {currentRound} de {gameConfig.rounds}

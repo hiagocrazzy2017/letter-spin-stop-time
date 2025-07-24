@@ -1,0 +1,42 @@
+{
+  "name": "pulsestop",
+  "version": "1.0.0",
+  "description": "PulseStop - Jogo de Adedonha Online Multiplayer com Node.js e Socket.IO",
+  "main": "server.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "build": "npm ci && npm run build:frontend && npm run setup:server",
+    "build:frontend": "vite build",
+    "setup:server": "cp package-server.json package.json && npm install --production",
+    "dev": "concurrently \"vite\" \"nodemon server.cjs\"",
+    "dev:frontend": "vite",
+    "dev:server": "nodemon server.cjs",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "pulsestop",
+    "stop",
+    "adedonha",
+    "multiplayer",
+    "game",
+    "socket.io",
+    "nodejs",
+    "react",
+    "vite"
+  ],
+  "author": "PulseStop Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.5",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}

@@ -569,13 +569,14 @@ io.on('connection', (socket) => {
 
 // Rota fallback para SPA (Vite/React build)
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/dist', 'index.html'));
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // Iniciar servidor
 server.listen(PORT, () => {
-  console.log(`🚀 Servidor Stop/Adedonha rodando na porta ${PORT}`);
+  console.log(`🚀 Servidor PulseStop rodando na porta ${PORT}`);
   console.log(`🎮 Pronto para receber jogadores!`);
+  console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
 });
 
 // Limpeza periódica de salas vazias
