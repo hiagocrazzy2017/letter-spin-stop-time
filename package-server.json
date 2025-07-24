@@ -2,7 +2,7 @@
   "name": "stop-adedonha-server",
   "version": "1.0.0",
   "description": "Servidor Node.js para jogo Stop/Adedonha multiplayer online",
-  "main": "server.js",
+  "main": "server.cjs",
   "scripts": {
     "start": "node server.cjs",
     "dev": "nodemon server.cjs",
