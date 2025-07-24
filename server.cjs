@@ -14,9 +14,8 @@ const io = socketIo(server, {
 
 const PORT = process.env.PORT || 3001;
 
-// Servir arquivos estáticos
+/// Servir arquivos estáticos
 app.use(express.static(path.join(__dirname, 'dist')));
-
 // Estado do jogo
 const gameRooms = new Map();
 
@@ -568,9 +567,9 @@ io.on('connection', (socket) => {
   });
 });
 
-// Rota fallback para SPA
+// Rota fallback para SPA (Vite/React build)
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  res.sendFile(path.join(__dirname, '../client/dist', 'index.html'));
 });
 
 // Iniciar servidor
