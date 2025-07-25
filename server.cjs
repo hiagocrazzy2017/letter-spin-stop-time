@@ -568,7 +568,12 @@ io.on('connection', (socket) => {
 });
 
 // Rota fallback para SPA (Vite/React build)
-app.get('*', (req, res) => {
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+// Serve outras rotas estáticas se não forem encontradas
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
