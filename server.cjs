@@ -283,14 +283,26 @@ io.on('connection', (socket) => {
       return;
     }
     
-    if (room.state !== 'waiting') {
-      socket.emit('error', { message: 'Jogo já em andamento' });
-      return;
-    }
-    
     if (room.players.size >= 8) {
       socket.emit('error', { message: 'Sala lotada' });
       return;
+    }
+    
+    // Se o jogo está em andamento, reset automático
+    if (room.state !== 'waiting') {
+      room.state = 'waiting';
+      room.currentRound = 0;
+      room.currentLetter = null;
+      room.roundStartTime = null;
+      room.roundEndTime = null;
+      room.roundAnswers.clear();
+      room.players.forEach((player, id) => {
+        room.playerScores.set(id, 0);
+      });
+      room.gameHistory = [];
+      
+      const resetMessage = room.addSystemMessage('Jogo resetado - novo jogador entrou');
+      io.to(roomId).emit('chat_message', resetMessage);
     }
     
     const player = room.addPlayer(socket.id, playerName);
@@ -306,6 +318,48 @@ io.on('connection', (socket) => {
     
     io.to(roomId).emit('game_update', room.getGameState());
     io.to(roomId).emit('chat_message', systemMessage);
+    
+    // Auto-start se tiver 2+ jogadores
+    if (room.players.size >= 2 && room.state === 'waiting') {
+      setTimeout(() => {
+        if (room.startGame()) {
+          const autoStartMessage = room.addSystemMessage('Jogo iniciado automaticamente!');
+          
+          io.to(roomId).emit('round_starting', {
+            round: room.currentRound,
+            totalRounds: room.config.rounds
+          });
+          
+          setTimeout(() => {
+            io.to(roomId).emit('letter_revealed', {
+              letter: room.currentLetter,
+              timeLimit: room.config.timePerRound
+            });
+            
+            io.to(roomId).emit('game_update', room.getGameState());
+            io.to(roomId).emit('chat_message', autoStartMessage);
+            
+            // Timer automático para finalizar rodada
+            setTimeout(() => {
+              if (room.state === 'playing') {
+                room.state = 'reviewing';
+                const roundScores = room.calculateRoundScores();
+                
+                io.to(roomId).emit('round_ended', {
+                  reason: 'timeout',
+                  answers: Object.fromEntries(room.roundAnswers),
+                  scores: Object.fromEntries(roundScores),
+                  totalScores: Object.fromEntries(room.playerScores)
+                });
+                
+                io.to(roomId).emit('game_update', room.getGameState());
+              }
+            }, room.config.timePerRound * 1000);
+            
+          }, 3000);
+        }
+      }, 2000);
+    }
     
     console.log(`${playerName} entrou na sala ${roomId}`);
   });

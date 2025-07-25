@@ -9,7 +9,6 @@ import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { 
   Settings, 
-  Play, 
   Users, 
   MessageCircle, 
   Trophy, 
@@ -19,25 +18,26 @@ import {
   Medal,
   Award,
   Hand,
+  Copy,
+  Loader2,
   RotateCcw
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { io, Socket } from 'socket.io-client';
 
 type GameState = 'setup' | 'waiting' | 'spinning' | 'playing' | 'reviewing' | 'finished';
 
 interface Player {
   id: string;
   name: string;
-  score: number;
-  answers: Record<string, string>;
+  totalScore?: number;
   isHost: boolean;
-  isOnline: boolean;
 }
 
 interface Category {
   id: string;
-  name: string;
-  enabled: boolean;
+  label: string;
+  active: boolean;
 }
 
 interface GameConfig {
@@ -48,22 +48,23 @@ interface GameConfig {
 }
 
 interface ChatMessage {
-  id: string;
-  player: string;
+  id: number;
+  playerId?: string;
+  playerName?: string;
   message: string;
-  timestamp: Date;
-  type: 'message' | 'system';
+  timestamp: number;
+  type: 'player' | 'system';
 }
 
 const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'nome', name: 'Nome', enabled: true },
-  { id: 'animal', name: 'Animal', enabled: true },
-  { id: 'objeto', name: 'Objeto', enabled: true },
-  { id: 'comida', name: 'Comida', enabled: true },
-  { id: 'lugar', name: 'Lugar', enabled: true },
-  { id: 'profissao', name: 'Profissão', enabled: false },
-  { id: 'marca', name: 'Marca', enabled: false },
-  { id: 'filme', name: 'Filme/Série', enabled: false },
+  { id: 'nome', label: 'Nome', active: true },
+  { id: 'animal', label: 'Animal', active: true },
+  { id: 'objeto', label: 'Objeto', active: true },
+  { id: 'comida', label: 'Comida', active: true },
+  { id: 'lugar', label: 'Lugar', active: true },
+  { id: 'profissao', label: 'Profissão', active: false },
+  { id: 'marca', label: 'Marca', active: false },
+  { id: 'cor', label: 'Cor', active: false },
 ];
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -71,44 +72,126 @@ const DIFFICULT_LETTERS = ['K', 'W', 'Y'];
 
 const Index = () => {
   const [gameState, setGameState] = useState<GameState>('setup');
-  const [currentPlayer, setCurrentPlayer] = useState<Player>({
-    id: '1',
-    name: '',
-    score: 0,
-    answers: {},
-    isHost: true,
-    isOnline: true
-  });
-  
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [roomId, setRoomId] = useState('');
+  const [joinRoomId, setJoinRoomId] = useState('');
+  const [playerName, setPlayerName] = useState('');
+  const [currentPlayer, setCurrentPlayer] = useState<Player | null>(null);
+  const [gameRoom, setGameRoom] = useState<any>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [gameConfig, setGameConfig] = useState<GameConfig>({
-    rounds: 5,
+    rounds: 3,
     timePerRound: 60,
     categories: DEFAULT_CATEGORIES,
     excludeDifficultLetters: true
   });
   
-  const [currentRound, setCurrentRound] = useState(1);
+  const [currentRound, setCurrentRound] = useState(0);
   const [currentLetter, setCurrentLetter] = useState('');
   const [timeLeft, setTimeLeft] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSpinning, setIsSpinning] = useState(false);
-  const [letterDisplayed, setLetterDisplayed] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [playerScores, setPlayerScores] = useState<Record<string, number>>({});
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout>();
 
-  // Simular jogadores online
+  // Conectar ao servidor
   useEffect(() => {
-    const mockPlayers = [
-      { id: '2', name: 'Ana', score: 0, answers: {}, isHost: false, isOnline: true },
-      { id: '3', name: 'Bruno', score: 0, answers: {}, isHost: false, isOnline: true },
-      { id: '4', name: 'Carla', score: 0, answers: {}, isHost: false, isOnline: true },
-    ];
-    setPlayers([currentPlayer, ...mockPlayers]);
-  }, [currentPlayer]);
+    const newSocket = io(window.location.origin);
+    setSocket(newSocket);
+
+    newSocket.on('room_created', (data) => {
+      setRoomId(data.room.id);
+      setCurrentPlayer(data.player);
+      setGameRoom(data.room);
+      setPlayers(data.room.players);
+      setGameState('waiting');
+      setConnecting(false);
+      toast({
+        title: "Sala criada!",
+        description: `Código da sala: ${data.room.id}`,
+      });
+    });
+
+    newSocket.on('room_joined', (data) => {
+      setRoomId(data.room.id);
+      setCurrentPlayer(data.player);
+      setGameRoom(data.room);
+      setPlayers(data.room.players);
+      setGameState('waiting');
+      setConnecting(false);
+      toast({
+        title: "Entrou na sala!",
+        description: `Conectado à sala ${data.room.id}`,
+      });
+    });
+
+    newSocket.on('game_update', (gameData) => {
+      setGameRoom(gameData);
+      setPlayers(gameData.players);
+      setCurrentRound(gameData.currentRound);
+      setCurrentLetter(gameData.currentLetter);
+      setPlayerScores(gameData.playerScores);
+      setTimeLeft(Math.ceil(gameData.timeRemaining / 1000));
+      
+      if (gameData.state === 'finished') {
+        setGameState('finished');
+      } else if (gameData.state === 'waiting') {
+        setGameState('waiting');
+      }
+    });
+
+    newSocket.on('round_starting', (data) => {
+      setGameState('spinning');
+      setIsSpinning(true);
+      setCurrentRound(data.round);
+    });
+
+    newSocket.on('letter_revealed', (data) => {
+      setCurrentLetter(data.letter);
+      setIsSpinning(false);
+      setGameState('playing');
+      setTimeLeft(data.timeLimit);
+      
+      // Reset answers
+      const emptyAnswers: Record<string, string> = {};
+      gameConfig.categories.filter(cat => cat.active).forEach(cat => {
+        emptyAnswers[cat.id] = '';
+      });
+      setAnswers(emptyAnswers);
+    });
+
+    newSocket.on('round_ended', (data) => {
+      setGameState('reviewing');
+      setTimeLeft(0);
+      setPlayerScores(data.totalScores);
+    });
+
+    newSocket.on('game_finished', (data) => {
+      setGameState('finished');
+    });
+
+    newSocket.on('chat_message', (message) => {
+      setChatMessages(prev => [...prev, message]);
+    });
+
+    newSocket.on('error', (error) => {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive"
+      });
+      setConnecting(false);
+    });
+
+    return () => {
+      newSocket.close();
+    };
+  }, []);
 
   // Scroll automático do chat
   useEffect(() => {
@@ -123,8 +206,6 @@ const Index = () => {
       timerRef.current = setTimeout(() => {
         setTimeLeft(prev => prev - 1);
       }, 1000);
-    } else if (gameState === 'playing' && timeLeft === 0) {
-      handleTimeUp();
     }
     
     return () => {
@@ -132,148 +213,105 @@ const Index = () => {
     };
   }, [timeLeft, gameState]);
 
-  const addSystemMessage = (message: string) => {
-    const newMessage: ChatMessage = {
-      id: Date.now().toString(),
-      player: 'Sistema',
-      message,
-      timestamp: new Date(),
-      type: 'system'
-    };
-    setChatMessages(prev => [...prev, newMessage]);
-  };
-
-  const handleTimeUp = () => {
-    setGameState('reviewing');
-    addSystemMessage('Tempo esgotado!');
-    
-    setTimeout(() => {
-      calculateScores();
-    }, 2000);
-  };
-
-  const sendChatMessage = () => {
-    if (!chatInput.trim()) return;
-    
-    const newMessage: ChatMessage = {
-      id: Date.now().toString(),
-      player: currentPlayer.name,
-      message: chatInput,
-      timestamp: new Date(),
-      type: 'message'
-    };
-    
-    setChatMessages(prev => [...prev, newMessage]);
-    setChatInput('');
-  };
-
-  const startGame = () => {
-    if (!currentPlayer.name.trim()) {
+  const createRoom = () => {
+    if (!playerName.trim()) {
       toast({
         title: "Nome obrigatório",
-        description: "Digite seu nome para começar a jogar.",
+        description: "Digite seu nome para criar uma sala.",
         variant: "destructive"
       });
       return;
     }
-
-    setGameState('waiting');
-    addSystemMessage(`${currentPlayer.name} iniciou uma nova partida!`);
     
-    setTimeout(() => {
-      setGameState('spinning');
-      spinLetter();
-    }, 2000);
+    setConnecting(true);
+    socket?.emit('create_room', { playerName: playerName.trim() });
   };
 
-  const spinLetter = () => {
-    setIsSpinning(true);
-    setLetterDisplayed('');
+  const joinRoom = () => {
+    if (!playerName.trim() || !joinRoomId.trim()) {
+      toast({
+        title: "Dados obrigatórios",
+        description: "Digite seu nome e o código da sala.",
+        variant: "destructive"
+      });
+      return;
+    }
     
-    const availableLetters = gameConfig.excludeDifficultLetters 
-      ? ALPHABET.filter(letter => !DIFFICULT_LETTERS.includes(letter))
-      : ALPHABET;
+    setConnecting(true);
+    socket?.emit('join_room', { 
+      roomId: joinRoomId.toUpperCase().trim(), 
+      playerName: playerName.trim() 
+    });
+  };
+
+  const sendChatMessage = () => {
+    if (!chatInput.trim() || !socket) return;
     
-    const randomLetter = availableLetters[Math.floor(Math.random() * availableLetters.length)];
+    socket.emit('send_message', chatInput.trim());
+    setChatInput('');
+  };
+
+  const updateGameConfig = (newConfig: Partial<GameConfig>) => {
+    if (!currentPlayer?.isHost || !socket) return;
     
-    // Simular animação da roleta
-    setTimeout(() => {
-      setCurrentLetter(randomLetter);
-      setLetterDisplayed(randomLetter);
-      setIsSpinning(false);
-      
-      setTimeout(() => {
-        setGameState('playing');
-        setTimeLeft(gameConfig.timePerRound);
-        addSystemMessage(`Rodada ${currentRound} começou! Letra: ${randomLetter}`);
-        
-        // Reset answers
-        const emptyAnswers: Record<string, string> = {};
-        gameConfig.categories.filter(cat => cat.enabled).forEach(cat => {
-          emptyAnswers[cat.id] = '';
-        });
-        setAnswers(emptyAnswers);
-      }, 1000);
-    }, 3000);
+    const updatedConfig = { ...gameConfig, ...newConfig };
+    setGameConfig(updatedConfig);
+    socket.emit('configure_game', updatedConfig);
+  };
+
+  const submitAnswers = () => {
+    if (!socket) return;
+    socket.emit('submit_answers', answers);
+  };
+
+  const startGame = () => {
+    if (!currentPlayer?.isHost || !socket) return;
+    
+    if (players.length < 2) {
+      toast({
+        title: "Aguarde mais jogadores",
+        description: "É necessário pelo menos 2 jogadores para começar.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    socket.emit('start_game');
   };
 
   const callStop = () => {
-    if (gameState !== 'playing') return;
+    if (gameState !== 'playing' || !socket) return;
     
-    setGameState('reviewing');
-    setTimeLeft(0);
-    addSystemMessage(`${currentPlayer.name} gritou STOP!`);
+    socket.emit('call_stop');
     toast({
       title: "STOP!",
       description: "Finalizando a rodada...",
     });
-    
-    setTimeout(() => {
-      calculateScores();
-    }, 2000);
   };
 
-  const calculateScores = () => {
-    // Simular pontuação dos outros jogadores
-    const updatedPlayers = players.map(player => {
-      if (player.id === currentPlayer.id) {
-        const validAnswers = Object.values(answers).filter(answer => answer.trim().length > 0);
-        const roundScore = validAnswers.length * 10; // 10 pontos por resposta válida
-        return { ...player, score: player.score + roundScore };
-      } else {
-        // Simular respostas dos outros jogadores
-        const randomScore = Math.floor(Math.random() * 50) + 10;
-        return { ...player, score: player.score + randomScore };
-      }
+  const nextRound = () => {
+    if (!currentPlayer?.isHost || !socket) return;
+    socket.emit('next_round');
+  };
+
+  const copyRoomId = () => {
+    navigator.clipboard.writeText(roomId);
+    toast({
+      title: "Código copiado!",
+      description: "Código da sala copiado para a área de transferência.",
     });
-    
-    setPlayers(updatedPlayers);
-    
-    if (currentRound >= gameConfig.rounds) {
-      setGameState('finished');
-      addSystemMessage('Jogo finalizado!');
-    } else {
-      setTimeout(() => {
-        setCurrentRound(currentRound + 1);
-        setGameState('spinning');
-        spinLetter();
-      }, 5000);
-    }
   };
 
-  const resetGame = () => {
-    setGameState('setup');
-    setCurrentRound(1);
-    setCurrentLetter('');
-    setTimeLeft(0);
-    setAnswers({});
-    setPlayers(prev => prev.map(p => ({ ...p, score: 0 })));
-    setChatMessages([]);
+  const restartGame = () => {
+    if (!currentPlayer?.isHost || !socket) return;
+    socket.emit('restart_game');
   };
 
-  const getRankingPosition = (player: Player) => {
-    const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
-    return sortedPlayers.findIndex(p => p.id === player.id) + 1;
+  const getRankingPosition = (playerId: string) => {
+    const sortedPlayers = players
+      .map(p => ({ ...p, score: playerScores[p.id] || 0 }))
+      .sort((a, b) => b.score - a.score);
+    return sortedPlayers.findIndex(p => p.id === playerId) + 1;
   };
 
   const getRankingIcon = (position: number) => {
@@ -297,12 +335,12 @@ const Index = () => {
           </div>
 
           <div className="grid lg:grid-cols-2 gap-6">
-            {/* Configurações do Jogo */}
+            {/* Criar Sala */}
             <Card className="game-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Settings className="w-5 h-5" />
-                  Configurações da Partida
+                  <Users className="w-5 h-5" />
+                  Criar Nova Sala
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -310,91 +348,215 @@ const Index = () => {
                   <Label htmlFor="playerName">Seu Nome</Label>
                   <Input
                     id="playerName"
-                    value={currentPlayer.name}
-                    onChange={(e) => setCurrentPlayer(prev => ({ ...prev, name: e.target.value }))}
+                    value={playerName}
+                    onChange={(e) => setPlayerName(e.target.value)}
                     placeholder="Digite seu nome"
                     className="mt-1"
                   />
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="rounds">Rodadas</Label>
-                    <Input
-                      id="rounds"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={gameConfig.rounds}
-                      onChange={(e) => setGameConfig(prev => ({ ...prev, rounds: parseInt(e.target.value) || 1 }))}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="time">Tempo (segundos)</Label>
-                    <Input
-                      id="time"
-                      type="number"
-                      min="30"
-                      max="180"
-                      value={gameConfig.timePerRound}
-                      onChange={(e) => setGameConfig(prev => ({ ...prev, timePerRound: parseInt(e.target.value) || 60 }))}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="difficult"
-                    checked={gameConfig.excludeDifficultLetters}
-                    onCheckedChange={(checked) => 
-                      setGameConfig(prev => ({ ...prev, excludeDifficultLetters: checked as boolean }))
-                    }
-                  />
-                  <Label htmlFor="difficult">Excluir letras difíceis (K, W, Y)</Label>
-                </div>
+                
+                <Button 
+                  onClick={createRoom} 
+                  className="w-full"
+                  disabled={connecting}
+                >
+                  {connecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Criando...
+                    </>
+                  ) : (
+                    'Criar Sala'
+                  )}
+                </Button>
               </CardContent>
             </Card>
 
-            {/* Categorias */}
+            {/* Entrar na Sala */}
             <Card className="game-card">
               <CardHeader>
-                <CardTitle>Categorias</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5" />
+                  Entrar em Sala
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2">
-                  {gameConfig.categories.map((category) => (
-                    <div key={category.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={category.id}
-                        checked={category.enabled}
-                        onCheckedChange={(checked) => {
-                          setGameConfig(prev => ({
-                            ...prev,
-                            categories: prev.categories.map(cat =>
-                              cat.id === category.id ? { ...cat, enabled: checked as boolean } : cat
-                            )
-                          }));
-                        }}
-                      />
-                      <Label htmlFor={category.id} className="text-sm">{category.name}</Label>
-                    </div>
-                  ))}
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="playerNameJoin">Seu Nome</Label>
+                  <Input
+                    id="playerNameJoin"
+                    value={playerName}
+                    onChange={(e) => setPlayerName(e.target.value)}
+                    placeholder="Digite seu nome"
+                    className="mt-1"
+                  />
                 </div>
+                
+                <div>
+                  <Label htmlFor="roomCode">Código da Sala</Label>
+                  <Input
+                    id="roomCode"
+                    value={joinRoomId}
+                    onChange={(e) => setJoinRoomId(e.target.value.toUpperCase())}
+                    placeholder="Digite o código"
+                    className="mt-1"
+                  />
+                </div>
+                
+                <Button 
+                  onClick={joinRoom} 
+                  className="w-full"
+                  disabled={connecting}
+                >
+                  {connecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Entrando...
+                    </>
+                  ) : (
+                    'Entrar na Sala'
+                  )}
+                </Button>
               </CardContent>
             </Card>
           </div>
+        </div>
+      </div>
+    );
+  }
 
-          <div className="text-center mt-8">
-            <Button
-              onClick={startGame}
-              size="lg"
-              className="btn-game text-lg px-8 py-4"
+  if (gameState === 'waiting') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background to-primary/10 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              Sala: {roomId}
+            </h1>
+            <Button 
+              onClick={copyRoomId} 
+              variant="outline" 
+              className="mb-4"
             >
-              <Play className="w-5 h-5 mr-2" />
-              Iniciar Jogo
+              <Copy className="w-4 h-4 mr-2" />
+              Copiar Código
             </Button>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Configurações (só para o host) */}
+            {currentPlayer?.isHost && (
+              <Card className="game-card">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="w-5 h-5" />
+                    Configurações da Partida
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="rounds">Rodadas</Label>
+                      <Input
+                        id="rounds"
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={gameConfig.rounds}
+                        onChange={(e) => updateGameConfig({ rounds: parseInt(e.target.value) || 1 })}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="time">Tempo (segundos)</Label>
+                      <Input
+                        id="time"
+                        type="number"
+                        min="30"
+                        max="180"
+                        value={gameConfig.timePerRound}
+                        onChange={(e) => updateGameConfig({ timePerRound: parseInt(e.target.value) || 60 })}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="difficult"
+                      checked={gameConfig.excludeDifficultLetters}
+                      onCheckedChange={(checked) => 
+                        updateGameConfig({ excludeDifficultLetters: checked as boolean })
+                      }
+                    />
+                    <Label htmlFor="difficult">Excluir letras difíceis (K, W, Y)</Label>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label>Categorias</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {gameConfig.categories.map((category) => (
+                        <div key={category.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={category.id}
+                            checked={category.active}
+                            onCheckedChange={(checked) => {
+                              const updatedCategories = gameConfig.categories.map(cat =>
+                                cat.id === category.id ? { ...cat, active: checked as boolean } : cat
+                              );
+                              updateGameConfig({ categories: updatedCategories });
+                            }}
+                          />
+                          <Label htmlFor={category.id} className="text-sm">{category.label}</Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button 
+                    onClick={startGame} 
+                    className="w-full mt-4"
+                    disabled={players.length < 2}
+                  >
+                    {players.length < 2 ? 'Aguarde mais jogadores' : 'Forçar Início Manual'}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Lista de Jogadores */}
+            <Card className="game-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Jogadores ({players.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {players.map((player) => (
+                    <div key={player.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
+                      <Avatar className="w-8 h-8">
+                        <AvatarFallback>{player.name.charAt(0).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <span className="flex-1">{player.name}</span>
+                      {player.isHost && (
+                        <Badge variant="secondary">
+                          <Crown className="w-3 h-3 mr-1" />
+                          Host
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-sm text-muted-foreground mt-4">
+                    {players.length < 2 
+                      ? 'Aguardando mais jogadores para iniciar automaticamente...'
+                      : 'O jogo iniciará automaticamente quando houver 2+ jogadores!'
+                    }
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
@@ -424,7 +586,7 @@ const Index = () => {
             )}
             <Button
               variant="outline"
-              onClick={resetGame}
+              onClick={restartGame}
               className="flex items-center gap-2"
             >
               <RotateCcw className="w-4 h-4" />
@@ -440,7 +602,7 @@ const Index = () => {
             <Card className="game-card">
               <CardContent className="py-8">
                 <div className="text-center">
-                  {gameState === 'waiting' && (
+                  {gameState === 'spinning' && (
                     <div className="space-y-4">
                       <div className="text-6xl">🎮</div>
                       <p className="text-xl">Preparando o jogo...</p>
@@ -458,8 +620,8 @@ const Index = () => {
                   
                   {(gameState === 'playing' || gameState === 'reviewing') && (
                     <div className="space-y-4">
-                      <div className={`text-9xl font-bold text-primary ${letterDisplayed ? 'letter-bounce' : ''}`}>
-                        {letterDisplayed}
+                      <div className={`text-9xl font-bold text-primary ${currentLetter ? 'letter-bounce' : ''}`}>
+                        {currentLetter}
                       </div>
                       <p className="text-xl">Letra da rodada</p>
                       {gameState === 'playing' && (
@@ -477,7 +639,7 @@ const Index = () => {
                       <p className="text-2xl font-bold">Jogo Finalizado!</p>
                       <div className="winner-glow p-4 rounded-lg border">
                         <p className="text-lg">Vencedor: <span className="font-bold text-game-winner">
-                          {[...players].sort((a, b) => b.score - a.score)[0]?.name}
+                          {[...players].sort((a, b) => (playerScores[b.id] || 0) - (playerScores[a.id] || 0))[0]?.name}
                         </span></p>
                       </div>
                     </div>
@@ -504,9 +666,9 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid md:grid-cols-2 gap-4">
-                    {gameConfig.categories.filter(cat => cat.enabled).map((category) => (
+                    {gameConfig.categories.filter(cat => cat.active).map((category) => (
                       <div key={category.id}>
-                        <Label htmlFor={category.id}>{category.name}</Label>
+                        <Label htmlFor={category.id}>{category.label}</Label>
                         <Input
                           id={category.id}
                           value={answers[category.id] || ''}
@@ -514,7 +676,7 @@ const Index = () => {
                             ...prev,
                             [category.id]: e.target.value
                           }))}
-                          placeholder={`${category.name} com ${currentLetter}...`}
+                          placeholder={`${category.label} com ${currentLetter}...`}
                           className="mt-1"
                         />
                       </div>
@@ -532,15 +694,15 @@ const Index = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {gameConfig.categories.filter(cat => cat.enabled).map((category) => (
+                    {gameConfig.categories.filter(cat => cat.active).map((category) => (
                       <div key={category.id} className="p-4 border rounded-lg">
-                        <h4 className="font-semibold mb-2">{category.name}</h4>
+                        <h4 className="font-semibold mb-2">{category.label}</h4>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                           {players.map((player) => (
                             <div key={player.id} className="text-sm">
                               <span className="font-medium">{player.name}:</span>
                               <span className="ml-1">
-                                {player.id === currentPlayer.id 
+                                {player.id === currentPlayer?.id 
                                   ? answers[category.id] || '-'
                                   : `Palavra${Math.random() > 0.3 ? ` com ${currentLetter}` : ' inválida'}`
                                 }
@@ -568,8 +730,8 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {[...players].sort((a, b) => b.score - a.score).map((player) => {
-                    const position = getRankingPosition(player);
+                  {[...players].sort((a, b) => (playerScores[b.id] || 0) - (playerScores[a.id] || 0)).map((player) => {
+                    const position = getRankingPosition(player.id);
                     return (
                       <div 
                         key={player.id} 
@@ -589,10 +751,8 @@ const Index = () => {
                           <span className="font-medium">{player.name}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold">{player.score}</span>
-                          {player.isOnline && (
-                            <div className="w-2 h-2 bg-success rounded-full"></div>
-                          )}
+                          <span className="font-bold">{playerScores[player.id] || 0}</span>
+                          <div className="w-2 h-2 bg-success rounded-full"></div>
                         </div>
                       </div>
                     );
@@ -623,15 +783,15 @@ const Index = () => {
                           : 'bg-primary/10'
                       }`}
                     >
-                      {msg.type === 'message' && (
+                      {msg.type === 'player' && (
                         <div className="flex items-start gap-2">
                           <Avatar className="w-6 h-6">
                             <AvatarFallback className="text-xs">
-                              {msg.player.substring(0, 2).toUpperCase()}
+                              {(msg.playerName || 'U').substring(0, 2).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium text-sm">{msg.player}</div>
+                            <div className="font-medium text-sm">{msg.playerName}</div>
                             <div className="text-sm">{msg.message}</div>
                           </div>
                         </div>
