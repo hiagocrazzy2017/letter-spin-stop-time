@@ -15,7 +15,9 @@ const io = socketIo(server, {
 const PORT = process.env.PORT || 3001;
 
 // Servir arquivos estáticos do diretório dist
-const distPath = path.join(__dirname, 'dist');
+// O servidor está na raiz do projeto, então dist está no mesmo nível
+const distPath = path.resolve(__dirname, 'dist');
+console.log('Procurando arquivos estáticos em:', distPath);
 app.use(express.static(distPath));
 // Estado do jogo
 const gameRooms = new Map();
