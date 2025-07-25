@@ -15,7 +15,8 @@ const io = socketIo(server, {
 const PORT = process.env.PORT || 3001;
 
 // Servir arquivos estáticos do diretório dist
-app.use(express.static(path.join(__dirname, 'dist')));
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
 // Estado do jogo
 const gameRooms = new Map();
 
@@ -567,14 +568,28 @@ io.on('connection', (socket) => {
   });
 });
 
+// Verificar se o arquivo index.html existe
+const fs = require('fs');
+const indexPath = path.join(distPath, 'index.html');
+
 // Rota fallback para SPA (Vite/React build)
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    console.error('index.html não encontrado em:', indexPath);
+    res.status(404).send('index.html não encontrado');
+  }
 });
 
 // Serve outras rotas estáticas se não forem encontradas
 app.use((req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    console.error('index.html não encontrado em:', indexPath);
+    res.status(404).send('index.html não encontrado');
+  }
 });
 
 // Iniciar servidor
