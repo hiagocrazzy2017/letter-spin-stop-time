@@ -27,7 +27,7 @@
   "author": "PulseStop Team",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
+    "express": "4.19.2",
     "socket.io": "^4.7.5",
     "cors": "^2.8.5",
     "@hookform/resolvers": "^3.9.0",
