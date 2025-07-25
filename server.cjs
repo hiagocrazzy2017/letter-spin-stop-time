@@ -14,7 +14,7 @@ const io = socketIo(server, {
 
 const PORT = process.env.PORT || 3001;
 
-/// Servir arquivos estáticos
+// Servir arquivos estáticos do diretório dist
 app.use(express.static(path.join(__dirname, 'dist')));
 // Estado do jogo
 const gameRooms = new Map();
