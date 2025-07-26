@@ -32,6 +32,7 @@ interface Player {
   name: string;
   totalScore?: number;
   isHost: boolean;
+  isReady: boolean;
 }
 
 interface Category {
@@ -95,6 +96,10 @@ const Index = () => {
   const [isSpinning, setIsSpinning] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [playerScores, setPlayerScores] = useState<Record<string, number>>({});
+  const [isReady, setIsReady] = useState(false);
+  const [votingAnswers, setVotingAnswers] = useState<any>(null);
+  const [userVotes, setUserVotes] = useState<Record<string, boolean>>({});
+  const [roundResult, setRoundResult] = useState<any>(null);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout>();
@@ -142,6 +147,9 @@ const Index = () => {
         setGameState('finished');
       } else if (gameData.state === 'waiting') {
         setGameState('waiting');
+        setIsReady(false);
+      } else if (gameData.state === 'voting') {
+        setGameState('reviewing');
       }
     });
 
@@ -165,10 +173,19 @@ const Index = () => {
       setAnswers(emptyAnswers);
     });
 
+    newSocket.on('voting_started', (data) => {
+      setGameState('reviewing');
+      setVotingAnswers(data.answers);
+      setUserVotes({});
+    });
+
     newSocket.on('round_ended', (data) => {
       setGameState('reviewing');
       setTimeLeft(0);
       setPlayerScores(data.totalScores);
+      setRoundResult(data);
+      setVotingAnswers(null);
+      setUserVotes({});
     });
 
     newSocket.on('game_finished', (data) => {
@@ -275,6 +292,16 @@ const Index = () => {
       });
       return;
     }
+
+    const allReady = players.every(p => p.isReady);
+    if (!allReady) {
+      toast({
+        title: "Aguarde todos os jogadores",
+        description: "Todos os jogadores devem estar prontos para iniciar.",
+        variant: "destructive"
+      });
+      return;
+    }
     
     socket.emit('start_game');
   };
@@ -305,6 +332,24 @@ const Index = () => {
   const restartGame = () => {
     if (!currentPlayer?.isHost || !socket) return;
     socket.emit('restart_game');
+  };
+
+  const toggleReady = () => {
+    if (!socket) return;
+    const newReady = !isReady;
+    setIsReady(newReady);
+    socket.emit('player_ready', newReady);
+  };
+
+  const voteAnswer = (answerId: string, isValid: boolean) => {
+    if (!socket || userVotes[answerId] !== undefined) return;
+    socket.emit('vote_answer', { answerId, isValid });
+    setUserVotes(prev => ({ ...prev, [answerId]: isValid }));
+  };
+
+  const finishVoting = () => {
+    if (!currentPlayer?.isHost || !socket) return;
+    socket.emit('finish_voting');
   };
 
   const getRankingPosition = (playerId: string) => {
@@ -513,13 +558,6 @@ const Index = () => {
                     </div>
                   </div>
 
-                  <Button 
-                    onClick={startGame} 
-                    className="w-full mt-4"
-                    disabled={players.length < 2}
-                  >
-                    {players.length < 2 ? 'Aguarde mais jogadores' : 'Forçar Início Manual'}
-                  </Button>
                 </CardContent>
               </Card>
             )}
@@ -534,24 +572,60 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {players.map((player) => (
+                   {players.map((player) => (
                     <div key={player.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                       <Avatar className="w-8 h-8">
                         <AvatarFallback>{player.name.charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
                       <span className="flex-1">{player.name}</span>
-                      {player.isHost && (
-                        <Badge variant="secondary">
-                          <Crown className="w-3 h-3 mr-1" />
-                          Host
-                        </Badge>
-                      )}
+                      <div className="flex gap-2">
+                        {player.isReady && (
+                          <Badge variant="default" className="bg-green-500">
+                            Pronto
+                          </Badge>
+                        )}
+                        {player.isHost && (
+                          <Badge variant="secondary">
+                            <Crown className="w-3 h-3 mr-1" />
+                            Host
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   ))}
+                  
+                  {/* Botão Pronto para o jogador atual */}
+                  <div className="pt-4">
+                    <Button 
+                      onClick={toggleReady}
+                      variant={isReady ? "default" : "outline"}
+                      className="w-full"
+                    >
+                      {isReady ? "✓ Pronto!" : "Marcar como Pronto"}
+                    </Button>
+                  </div>
+                  
+                  {/* Botão Start para o host */}
+                  {currentPlayer?.isHost && (
+                    <div className="pt-2">
+                      <Button 
+                        onClick={startGame}
+                        className="w-full"
+                        disabled={players.length < 2 || !players.every(p => p.isReady)}
+                      >
+                        {players.length < 2 
+                          ? 'Aguarde mais jogadores'
+                          : !players.every(p => p.isReady)
+                          ? 'Aguarde todos estarem prontos'
+                          : 'Iniciar Jogo'
+                        }
+                      </Button>
+                    </div>
+                  )}
                   <p className="text-sm text-muted-foreground mt-4">
                     {players.length < 2 
-                      ? 'Aguardando mais jogadores para iniciar automaticamente...'
-                      : 'O jogo iniciará automaticamente quando houver 2+ jogadores!'
+                      ? 'Aguardando mais jogadores...'
+                      : 'Todos devem estar prontos para iniciar!'
                     }
                   </p>
                 </div>
@@ -686,29 +760,119 @@ const Index = () => {
               </Card>
             )}
 
-            {/* Revisão de Respostas */}
-            {gameState === 'reviewing' && (
+            {/* Votação de Respostas */}
+            {gameState === 'reviewing' && votingAnswers && (
               <Card className="game-card">
                 <CardHeader>
-                  <CardTitle>Respostas da Rodada {currentRound}</CardTitle>
+                  <CardTitle className="flex justify-between items-center">
+                    Votação - Rodada {currentRound}
+                    {currentPlayer?.isHost && (
+                      <Button onClick={finishVoting} size="sm">
+                        Finalizar Votação
+                      </Button>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {gameConfig.categories.filter(cat => cat.active).map((category) => {
+                      const categoryAnswers = Object.entries(votingAnswers).filter(
+                        ([_, answerData]: [string, any]) => answerData.categoryId === category.id
+                      );
+                      
+                      if (categoryAnswers.length === 0) return null;
+                      
+                      return (
+                        <div key={category.id} className="p-4 border rounded-lg">
+                          <h4 className="font-semibold mb-3">{category.label}</h4>
+                          <div className="space-y-3">
+                            {categoryAnswers.map(([answerId, answerData]: [string, any]) => {
+                              const userVoted = userVotes[answerId] !== undefined;
+                              const isOwnAnswer = answerData.playerId === currentPlayer?.id;
+                              
+                              return (
+                                <div key={answerId} className="flex items-center justify-between p-3 border rounded-lg">
+                                  <div>
+                                    <span className="font-medium">{answerData.playerName}: </span>
+                                    <span className="text-lg">{answerData.answer}</span>
+                                  </div>
+                                  {!isOwnAnswer && (
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant={userVoted && userVotes[answerId] ? "default" : "outline"}
+                                        onClick={() => voteAnswer(answerId, true)}
+                                        disabled={userVoted}
+                                        className="bg-green-500 hover:bg-green-600"
+                                      >
+                                        ✓ Vale
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant={userVoted && !userVotes[answerId] ? "destructive" : "outline"}
+                                        onClick={() => voteAnswer(answerId, false)}
+                                        disabled={userVoted}
+                                      >
+                                        ✗ Não Vale
+                                      </Button>
+                                    </div>
+                                  )}
+                                  {isOwnAnswer && (
+                                    <Badge variant="secondary">Sua resposta</Badge>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-4 text-center">
+                    Vote se as respostas são válidas. Não é possível votar na própria resposta.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Resultados da Rodada */}
+            {gameState === 'reviewing' && roundResult && !votingAnswers && (
+              <Card className="game-card">
+                <CardHeader>
+                  <CardTitle className="flex justify-between items-center">
+                    Resultados - Rodada {currentRound}
+                    {currentPlayer?.isHost && currentRound < gameConfig.rounds && (
+                      <Button onClick={nextRound}>
+                        Próxima Rodada
+                      </Button>
+                    )}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     {gameConfig.categories.filter(cat => cat.active).map((category) => (
                       <div key={category.id} className="p-4 border rounded-lg">
                         <h4 className="font-semibold mb-2">{category.label}</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          {players.map((player) => (
-                            <div key={player.id} className="text-sm">
-                              <span className="font-medium">{player.name}:</span>
-                              <span className="ml-1">
-                                {player.id === currentPlayer?.id 
-                                  ? answers[category.id] || '-'
-                                  : `Palavra${Math.random() > 0.3 ? ` com ${currentLetter}` : ' inválida'}`
-                                }
-                              </span>
-                            </div>
-                          ))}
+                        <div className="space-y-2">
+                          {players.map((player) => {
+                            const playerAnswers = roundResult.answers[player.id];
+                            const answer = playerAnswers?.answers[category.id] || '';
+                            const playerScore = roundResult.scores[player.id] || 0;
+                            
+                            return (
+                              <div key={player.id} className="flex justify-between items-center p-2 rounded bg-muted/50">
+                                <div>
+                                  <span className="font-medium">{player.name}: </span>
+                                  <span className={answer ? "text-foreground" : "text-muted-foreground"}>
+                                    {answer || '(sem resposta)'}
+                                  </span>
+                                </div>
+                                <Badge variant={playerScore > 0 ? "default" : "secondary"}>
+                                  +{playerScore} pts
+                                </Badge>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}

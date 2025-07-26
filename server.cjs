@@ -43,7 +43,7 @@ class GameRoom {
     this.id = roomId;
     this.hostId = hostId;
     this.players = new Map();
-    this.state = 'waiting'; // waiting, playing, reviewing, finished
+    this.state = 'waiting'; // waiting, playing, reviewing, voting, finished
     this.config = {
       rounds: 3,
       timePerRound: 60,
@@ -58,6 +58,8 @@ class GameRoom {
     this.playerScores = new Map();
     this.gameHistory = [];
     this.chatMessages = [];
+    this.votes = new Map(); // Para votação das respostas
+    this.votingAnswers = new Map(); // Respostas sendo votadas
   }
 
   addPlayer(playerId, playerName) {
@@ -71,6 +73,19 @@ class GameRoom {
     this.players.set(playerId, player);
     this.playerScores.set(playerId, 0);
     return player;
+  }
+
+  setPlayerReady(playerId, ready) {
+    const player = this.players.get(playerId);
+    if (player) {
+      player.isReady = ready;
+      return true;
+    }
+    return false;
+  }
+
+  allPlayersReady() {
+    return Array.from(this.players.values()).every(player => player.isReady);
   }
 
   removePlayer(playerId) {
@@ -95,10 +110,14 @@ class GameRoom {
   }
 
   startGame() {
-    if (this.state === 'waiting' && this.players.size >= 2) {
+    if (this.state === 'waiting' && this.players.size >= 2 && this.allPlayersReady()) {
       this.state = 'playing';
       this.currentRound = 1;
       this.startNewRound();
+      // Reset ready status
+      this.players.forEach(player => {
+        player.isReady = false;
+      });
       return true;
     }
     return false;
@@ -130,68 +149,114 @@ class GameRoom {
   callStop(playerId) {
     if (this.state === 'playing') {
       this.roundEndTime = Date.now();
-      this.state = 'reviewing';
+      this.state = 'voting';
+      this.prepareVoting();
       return playerId;
     }
     return null;
   }
 
-  calculateRoundScores() {
-    const roundScores = new Map();
-    const categoryAnswers = new Map();
-
-    // Organizar respostas por categoria
+  prepareVoting() {
+    this.votes.clear();
+    this.votingAnswers.clear();
+    
     const activeCategories = this.config.categories.filter(cat => cat.active);
     
-    activeCategories.forEach(category => {
-      categoryAnswers.set(category.id, new Map());
+    // Organizar respostas para votação
+    this.roundAnswers.forEach((playerData, playerId) => {
+      const player = this.players.get(playerId);
+      activeCategories.forEach(category => {
+        const answer = playerData.answers[category.id];
+        if (answer && answer.trim()) {
+          const answerId = `${playerId}_${category.id}`;
+          this.votingAnswers.set(answerId, {
+            playerId,
+            playerName: player.name,
+            categoryId: category.id,
+            categoryLabel: category.label,
+            answer: answer.trim(),
+            letter: this.currentLetter,
+            validVotes: 0,
+            invalidVotes: 0,
+            voters: new Set()
+          });
+        }
+      });
     });
+  }
 
-    // Coletar todas as respostas
+  submitVote(voterId, answerId, isValid) {
+    const answerData = this.votingAnswers.get(answerId);
+    if (!answerData || answerData.voters.has(voterId) || answerData.playerId === voterId) {
+      return false; // Não pode votar na própria resposta ou votar duas vezes
+    }
+
+    answerData.voters.add(voterId);
+    if (isValid) {
+      answerData.validVotes++;
+    } else {
+      answerData.invalidVotes++;
+    }
+
+    return true;
+  }
+
+  finishVoting() {
+    const roundScores = new Map();
+    
+    // Inicializar pontuações
     this.roundAnswers.forEach((playerData, playerId) => {
       roundScores.set(playerId, 0);
-      
-      activeCategories.forEach(category => {
-        const answer = playerData.answers[category.id];
-        if (answer && answer.trim()) {
-          const normalizedAnswer = answer.trim().toLowerCase();
-          if (!categoryAnswers.get(category.id).has(normalizedAnswer)) {
-            categoryAnswers.get(category.id).set(normalizedAnswer, []);
-          }
-          categoryAnswers.get(category.id).get(normalizedAnswer).push(playerId);
-        }
-      });
     });
 
-    // Calcular pontuação
-    this.roundAnswers.forEach((playerData, playerId) => {
-      let playerRoundScore = 0;
-
-      activeCategories.forEach(category => {
-        const answer = playerData.answers[category.id];
-        if (answer && answer.trim()) {
-          const normalizedAnswer = answer.trim().toLowerCase();
-          const playersWithSameAnswer = categoryAnswers.get(category.id).get(normalizedAnswer);
-          
-          // Verificar se a palavra começa com a letra correta
-          if (normalizedAnswer.charAt(0).toUpperCase() === this.currentLetter) {
-            if (playersWithSameAnswer.length === 1) {
-              playerRoundScore += 10; // Resposta única
-            } else {
-              playerRoundScore += 5;  // Resposta repetida
-            }
-          }
-          // Senão, 0 pontos
-        }
-      });
-
-      roundScores.set(playerId, playerRoundScore);
+    // Calcular pontuações baseadas na votação
+    this.votingAnswers.forEach((answerData) => {
+      const totalVotes = answerData.validVotes + answerData.invalidVotes;
+      const isAnswerValid = answerData.validVotes > answerData.invalidVotes;
       
-      // Atualizar pontuação total
+      // Verificar se a palavra começa com a letra correta
+      const startsWithCorrectLetter = answerData.answer.charAt(0).toUpperCase() === this.currentLetter;
+      
+      if (isAnswerValid && startsWithCorrectLetter && totalVotes > 0) {
+        // Contar quantas respostas válidas existem para esta categoria
+        const categoryAnswers = Array.from(this.votingAnswers.values())
+          .filter(a => a.categoryId === answerData.categoryId)
+          .filter(a => {
+            const totalV = a.validVotes + a.invalidVotes;
+            return totalV > 0 && a.validVotes > a.invalidVotes && 
+                   a.answer.charAt(0).toUpperCase() === this.currentLetter;
+          });
+
+        const uniqueAnswers = new Set(categoryAnswers.map(a => a.answer.toLowerCase()));
+        const isUnique = uniqueAnswers.size === categoryAnswers.length;
+        
+        if (isUnique) {
+          const currentScore = roundScores.get(answerData.playerId) || 0;
+          roundScores.set(answerData.playerId, currentScore + 10); // Resposta única
+        } else {
+          const currentScore = roundScores.get(answerData.playerId) || 0;
+          roundScores.set(answerData.playerId, currentScore + 5); // Resposta repetida
+        }
+      }
+    });
+
+    // Atualizar pontuações totais
+    roundScores.forEach((roundScore, playerId) => {
       const currentTotal = this.playerScores.get(playerId) || 0;
-      this.playerScores.set(playerId, currentTotal + playerRoundScore);
+      this.playerScores.set(playerId, currentTotal + roundScore);
     });
 
+    this.state = 'reviewing';
+    return roundScores;
+  }
+
+  calculateRoundScores() {
+    // Este método agora é usado apenas como fallback
+    // A pontuação principal é calculada no finishVoting()
+    const roundScores = new Map();
+    this.roundAnswers.forEach((playerData, playerId) => {
+      roundScores.set(playerId, 0);
+    });
     return roundScores;
   }
 
@@ -206,7 +271,9 @@ class GameRoom {
       roundEndTime: this.roundEndTime,
       players: Array.from(this.players.values()),
       playerScores: Object.fromEntries(this.playerScores),
-      timeRemaining: this.roundEndTime ? Math.max(0, this.roundEndTime - Date.now()) : 0
+      timeRemaining: this.roundEndTime ? Math.max(0, this.roundEndTime - Date.now()) : 0,
+      votingAnswers: this.state === 'voting' ? Object.fromEntries(this.votingAnswers) : null,
+      roundAnswers: this.state === 'reviewing' ? Object.fromEntries(this.roundAnswers) : null
     };
   }
 
@@ -319,49 +386,23 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('game_update', room.getGameState());
     io.to(roomId).emit('chat_message', systemMessage);
     
-    // Auto-start se tiver 2+ jogadores
-    if (room.players.size >= 2 && room.state === 'waiting') {
-      setTimeout(() => {
-        if (room.startGame()) {
-          const autoStartMessage = room.addSystemMessage('Jogo iniciado automaticamente!');
-          
-          io.to(roomId).emit('round_starting', {
-            round: room.currentRound,
-            totalRounds: room.config.rounds
-          });
-          
-          setTimeout(() => {
-            io.to(roomId).emit('letter_revealed', {
-              letter: room.currentLetter,
-              timeLimit: room.config.timePerRound
-            });
-            
-            io.to(roomId).emit('game_update', room.getGameState());
-            io.to(roomId).emit('chat_message', autoStartMessage);
-            
-            // Timer automático para finalizar rodada
-            setTimeout(() => {
-              if (room.state === 'playing') {
-                room.state = 'reviewing';
-                const roundScores = room.calculateRoundScores();
-                
-                io.to(roomId).emit('round_ended', {
-                  reason: 'timeout',
-                  answers: Object.fromEntries(room.roundAnswers),
-                  scores: Object.fromEntries(roundScores),
-                  totalScores: Object.fromEntries(room.playerScores)
-                });
-                
-                io.to(roomId).emit('game_update', room.getGameState());
-              }
-            }, room.config.timePerRound * 1000);
-            
-          }, 3000);
-        }
-      }, 2000);
-    }
     
     console.log(`${playerName} entrou na sala ${roomId}`);
+  });
+
+  // Marcar jogador como pronto
+  socket.on('player_ready', (ready) => {
+    const room = gameRooms.get(socket.roomId);
+    if (!room) return;
+    
+    if (room.setPlayerReady(socket.id, ready)) {
+      const player = room.players.get(socket.id);
+      const message = ready ? `${player.name} está pronto` : `${player.name} não está mais pronto`;
+      const systemMessage = room.addSystemMessage(message);
+      
+      io.to(socket.roomId).emit('game_update', room.getGameState());
+      io.to(socket.roomId).emit('chat_message', systemMessage);
+    }
   });
 
   // Configurar jogo
@@ -404,17 +445,14 @@ io.on('connection', (socket) => {
         io.to(socket.roomId).emit('game_update', room.getGameState());
         io.to(socket.roomId).emit('chat_message', systemMessage);
         
-        // Timer automático para finalizar rodada
+        // Timer automático para ir para votação
         setTimeout(() => {
           if (room.state === 'playing') {
-            room.state = 'reviewing';
-            const roundScores = room.calculateRoundScores();
+            room.state = 'voting';
+            room.prepareVoting();
             
-            io.to(socket.roomId).emit('round_ended', {
-              reason: 'timeout',
-              answers: Object.fromEntries(room.roundAnswers),
-              scores: Object.fromEntries(roundScores),
-              totalScores: Object.fromEntries(room.playerScores)
+            io.to(socket.roomId).emit('voting_started', {
+              answers: Object.fromEntries(room.votingAnswers)
             });
             
             io.to(socket.roomId).emit('game_update', room.getGameState());
@@ -424,6 +462,8 @@ io.on('connection', (socket) => {
       }, 3000);
       
       console.log(`Jogo iniciado na sala ${socket.roomId}`);
+    } else {
+      socket.emit('error', { message: 'Todos os jogadores devem estar prontos para iniciar' });
     }
   });
 
@@ -455,7 +495,6 @@ io.on('connection', (socket) => {
     const stopCallerId = room.callStop(socket.id);
     if (stopCallerId) {
       const player = room.players.get(stopCallerId);
-      const roundScores = room.calculateRoundScores();
       
       const systemMessage = room.addSystemMessage(`${player.name} gritou STOP!`);
       
@@ -464,12 +503,8 @@ io.on('connection', (socket) => {
         callerName: player.name
       });
       
-      io.to(socket.roomId).emit('round_ended', {
-        reason: 'stop',
-        caller: player.name,
-        answers: Object.fromEntries(room.roundAnswers),
-        scores: Object.fromEntries(roundScores),
-        totalScores: Object.fromEntries(room.playerScores)
+      io.to(socket.roomId).emit('voting_started', {
+        answers: Object.fromEntries(room.votingAnswers)
       });
       
       io.to(socket.roomId).emit('game_update', room.getGameState());
@@ -509,17 +544,14 @@ io.on('connection', (socket) => {
         io.to(socket.roomId).emit('game_update', room.getGameState());
         io.to(socket.roomId).emit('chat_message', systemMessage);
         
-        // Timer automático
+        // Timer automático para votação
         setTimeout(() => {
           if (room.state === 'playing') {
-            room.state = 'reviewing';
-            const roundScores = room.calculateRoundScores();
+            room.state = 'voting';
+            room.prepareVoting();
             
-            io.to(socket.roomId).emit('round_ended', {
-              reason: 'timeout',
-              answers: Object.fromEntries(room.roundAnswers),
-              scores: Object.fromEntries(roundScores),
-              totalScores: Object.fromEntries(room.playerScores)
+            io.to(socket.roomId).emit('voting_started', {
+              answers: Object.fromEntries(room.votingAnswers)
             });
             
             io.to(socket.roomId).emit('game_update', room.getGameState());
@@ -585,6 +617,37 @@ io.on('connection', (socket) => {
     io.to(socket.roomId).emit('chat_message', systemMessage);
     
     console.log(`Jogo reiniciado na sala ${socket.roomId}`);
+  });
+
+  // Votar em resposta
+  socket.on('vote_answer', (data) => {
+    const { answerId, isValid } = data;
+    const room = gameRooms.get(socket.roomId);
+    if (!room || room.state !== 'voting') return;
+    
+    if (room.submitVote(socket.id, answerId, isValid)) {
+      io.to(socket.roomId).emit('game_update', room.getGameState());
+    }
+  });
+
+  // Finalizar votação
+  socket.on('finish_voting', () => {
+    const room = gameRooms.get(socket.roomId);
+    if (!room || room.hostId !== socket.id || room.state !== 'voting') {
+      socket.emit('error', { message: 'Apenas o host pode finalizar a votação' });
+      return;
+    }
+    
+    const roundScores = room.finishVoting();
+    
+    io.to(socket.roomId).emit('round_ended', {
+      answers: Object.fromEntries(room.roundAnswers),
+      scores: Object.fromEntries(roundScores),
+      totalScores: Object.fromEntries(room.playerScores),
+      votingResults: Object.fromEntries(room.votingAnswers)
+    });
+    
+    io.to(socket.roomId).emit('game_update', room.getGameState());
   });
 
   // Chat
