@@ -25,7 +25,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { io, Socket } from 'socket.io-client';
 
-type GameState = 'setup' | 'waiting' | 'spinning' | 'playing' | 'reviewing' | 'finished';
+type GameState = 'setup' | 'waiting' | 'spinning' | 'playing' | 'voting' | 'reviewing' | 'finished';
 
 interface Player {
   id: string;
@@ -149,7 +149,7 @@ const Index = () => {
         setGameState('waiting');
         setIsReady(false);
       } else if (gameData.state === 'voting') {
-        setGameState('reviewing');
+        setGameState('voting');
       }
     });
 
@@ -174,7 +174,7 @@ const Index = () => {
     });
 
     newSocket.on('voting_started', (data) => {
-      setGameState('reviewing');
+      setGameState('voting');
       setVotingAnswers(data.answers);
       setUserVotes({});
     });
@@ -761,7 +761,7 @@ const Index = () => {
             )}
 
             {/* Votação de Respostas */}
-            {gameState === 'reviewing' && votingAnswers && (
+            {gameState === 'voting' && votingAnswers && (
               <Card className="game-card">
                 <CardHeader>
                   <CardTitle className="flex justify-between items-center">
