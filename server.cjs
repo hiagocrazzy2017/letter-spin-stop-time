@@ -167,28 +167,34 @@ class GameRoom {
       const player = this.players.get(playerId);
       activeCategories.forEach(category => {
         const answer = playerData.answers[category.id];
-        if (answer && answer.trim()) {
-          const answerId = `${playerId}_${category.id}`;
-          this.votingAnswers.set(answerId, {
-            playerId,
-            playerName: player.name,
-            categoryId: category.id,
-            categoryLabel: category.label,
-            answer: answer.trim(),
-            letter: this.currentLetter,
-            validVotes: 0,
-            invalidVotes: 0,
-            voters: new Set()
-          });
-        }
+        const answerId = `${playerId}_${category.id}`;
+        this.votingAnswers.set(answerId, {
+          playerId,
+          playerName: player.name,
+          categoryId: category.id,
+          categoryLabel: category.label,
+          answer: answer && answer.trim() ? answer.trim() : '(sem resposta)',
+          letter: this.currentLetter,
+          validVotes: 0,
+          invalidVotes: 0,
+          voters: new Set(),
+          hasAnswer: !!(answer && answer.trim())
+        });
       });
     });
+    
+    console.log('Votação preparada com', this.votingAnswers.size, 'respostas');
   }
 
   submitVote(voterId, answerId, isValid) {
     const answerData = this.votingAnswers.get(answerId);
     if (!answerData || answerData.voters.has(voterId) || answerData.playerId === voterId) {
       return false; // Não pode votar na própria resposta ou votar duas vezes
+    }
+
+    // Só pode votar em respostas que realmente existem (não "(sem resposta)")
+    if (!answerData.hasAnswer) {
+      return false;
     }
 
     answerData.voters.add(voterId);
@@ -198,6 +204,7 @@ class GameRoom {
       answerData.invalidVotes++;
     }
 
+    console.log(`Voto registrado: ${answerId} - ${isValid ? 'válido' : 'inválido'}`);
     return true;
   }
 
@@ -209,34 +216,47 @@ class GameRoom {
       roundScores.set(playerId, 0);
     });
 
+    console.log('Calculando pontuações da votação...');
+
     // Calcular pontuações baseadas na votação
     this.votingAnswers.forEach((answerData) => {
+      // Só calcular pontos para respostas que realmente existem
+      if (!answerData.hasAnswer) {
+        return;
+      }
+
       const totalVotes = answerData.validVotes + answerData.invalidVotes;
-      const isAnswerValid = answerData.validVotes > answerData.invalidVotes;
+      const isAnswerValid = totalVotes === 0 || answerData.validVotes > answerData.invalidVotes;
       
       // Verificar se a palavra começa com a letra correta
       const startsWithCorrectLetter = answerData.answer.charAt(0).toUpperCase() === this.currentLetter;
       
-      if (isAnswerValid && startsWithCorrectLetter && totalVotes > 0) {
+      console.log(`Analisando resposta: ${answerData.answer} - Válida: ${isAnswerValid} - Letra correta: ${startsWithCorrectLetter}`);
+      
+      if (isAnswerValid && startsWithCorrectLetter) {
         // Contar quantas respostas válidas existem para esta categoria
         const categoryAnswers = Array.from(this.votingAnswers.values())
-          .filter(a => a.categoryId === answerData.categoryId)
+          .filter(a => a.categoryId === answerData.categoryId && a.hasAnswer)
           .filter(a => {
             const totalV = a.validVotes + a.invalidVotes;
-            return totalV > 0 && a.validVotes > a.invalidVotes && 
-                   a.answer.charAt(0).toUpperCase() === this.currentLetter;
+            const valid = totalV === 0 || a.validVotes > a.invalidVotes;
+            return valid && a.answer.charAt(0).toUpperCase() === this.currentLetter;
           });
 
         const uniqueAnswers = new Set(categoryAnswers.map(a => a.answer.toLowerCase()));
         const isUnique = uniqueAnswers.size === categoryAnswers.length;
         
+        let points = 0;
         if (isUnique) {
-          const currentScore = roundScores.get(answerData.playerId) || 0;
-          roundScores.set(answerData.playerId, currentScore + 10); // Resposta única
+          points = 10; // Resposta única
         } else {
-          const currentScore = roundScores.get(answerData.playerId) || 0;
-          roundScores.set(answerData.playerId, currentScore + 5); // Resposta repetida
+          points = 5; // Resposta repetida
         }
+        
+        const currentScore = roundScores.get(answerData.playerId) || 0;
+        roundScores.set(answerData.playerId, currentScore + points);
+        
+        console.log(`${answerData.playerName} ganhou ${points} pontos por "${answerData.answer}"`);
       }
     });
 
@@ -245,6 +265,9 @@ class GameRoom {
       const currentTotal = this.playerScores.get(playerId) || 0;
       this.playerScores.set(playerId, currentTotal + roundScore);
     });
+
+    console.log('Pontuações finais da rodada:', Object.fromEntries(roundScores));
+    console.log('Pontuações totais:', Object.fromEntries(this.playerScores));
 
     this.state = 'reviewing';
     return roundScores;
